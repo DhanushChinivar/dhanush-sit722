@@ -66,4 +66,4 @@ jobs:
           else
             echo "Directory $service not found, skipping."
           fi
-        done..
+        done
