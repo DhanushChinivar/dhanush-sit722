@@ -1,4 +1,4 @@
-name: CI Pipeline (Testing Branch)
+name: CI - Build & Test
 
 on:
   push:
@@ -6,64 +6,38 @@ on:
       - testing
 
 jobs:
-  test-build-push:
+  build-test:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout repo
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-    # Step 2: Set up Node.js for running tests (frontend/backend, etc.)
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    # Step 3: Install dependencies and run tests
-    - name: Run tests for frontend
-      run: |
-        if [ -f ./frontend/package.json ]; then
-          cd frontend
-          npm install
-          npm test || echo "No tests found in frontend"
-          cd ..
-        else
-          echo "No frontend package.json found, skipping tests."
-        fi
+      - name: Install dependencies
+        run: npm install
 
-    - name: Run tests for backend
-      run: |
-        if [ -f ./backend/package.json ]; then
-          cd backend
-          npm install
-          npm test || echo "No tests found in backend"
-          cd ..
-        else
-          echo "No backend package.json found, skipping tests."
-        fi
+      - name: Run tests
+        run: npm test
 
-    # Step 4: Login to Azure using service principal
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    # Step 5: Login to ACR
-    - name: Docker login to ACR
-      run: |
-        az acr login --name ${{ secrets.REGISTRY_NAME }}
+      - name: Docker login to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+          password: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
 
-    # Step 6: Build and Push Docker Images (only if tests passed)
-    - name: Build & Push Docker Images
-      run: |
-        for service in frontend backend product order customer; do
-          if [ -d "$service" ]; then
-            IMAGE_NAME=${{ secrets.REGISTRY_LOGIN_SERVER }}/$service:${{ github.sha }}
-            echo "Building and pushing image: $IMAGE_NAME"
-            docker build -t $IMAGE_NAME ./$service
-            docker push $IMAGE_NAME
-          else
-            echo "Directory $service not found, skipping."
-          fi
-        done
+      - name: Build & Push Image
+        if: success()
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/app:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/app:${{ github.sha }}
